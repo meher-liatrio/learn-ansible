@@ -1,0 +1,83 @@
+---
+- name: Install GitHub self-hosted runner
+  hosts: all
+  become: yes
+  vars:
+    github_owner: 'meher-liatrio'
+    github_repo: 'learn-ansible'
+    runner_token: "{{ lookup('env','RUNNER_TOKEN') }}"
+    runner_name: 'ansible-runner'
+    runner_work_dir: '_work'
+  tasks:
+    - name: Debug runner_token
+      debug:
+        var: runner_token
+    - name: Update system packages
+      apt:
+        update_cache: yes
+
+    - name: Install necessary packages
+      apt:
+        name:
+          - curl
+          - jq
+
+    - name: Download runner package
+      get_url:
+        url: "https://github.com/actions/runner/releases/download/v2.316.0/actions-runner-linux-arm64-2.316.0.tar.gz"
+        dest: "/tmp/actions-runner.tar.gz"
+
+    - name: Create runner directory
+      file:
+        path: "/home/{{ ansible_user }}/actions-runner"
+        state: directory
+    
+    - name: Change permissions of actions-runner directory
+      file:
+        path: "/home/{{ ansible_user }}/actions-runner"
+        mode: '755'
+        recurse: yes
+
+    - name: Extract runner package
+      unarchive:
+        src: "/tmp/actions-runner.tar.gz"
+        dest: "/home/{{ ansible_user }}/actions-runner"
+        mode: '777'
+        remote_src: yes
+    
+    - name: Check if runner is already configured
+      become: no
+      expect:
+        command: echo -e "\033[0m" && ./config.sh --check
+        responses:
+          Question1: "https://github.com/{{ github_owner }}/{{ github_repo}}"
+          Question2: "{{ runner_token }}"
+      args:
+        chdir: "/home/{{ ansible_user }}/actions-runner"
+      register: check_result
+      ignore_errors: true
+
+    - name: Remove existing runner configuration
+      become: no
+  
+      expect:
+        command: ./config.sh remove"
+        responses:
+          "Enter runner remove token: ": "{{ runner_token }}"
+      args:
+        chdir: "/home/{{ ansible_user }}/actions-runner"
+      ignore_errors: true
+      when: check_result.rc == 0
+
+    - name: Configure runner
+      become: no
+      command: "./config.sh --url https://github.com/{{ github_owner }}/{{ github_repo}} --token {{ runner_token }} --unattended"
+      args:
+        chdir: "/home/{{ ansible_user }}/actions-runner"
+    
+    - name: Run Runner
+      become: no
+      command: "./run.sh"
+      args:
+        chdir: "/home/{{ ansible_user }}/actions-runner"
+...
