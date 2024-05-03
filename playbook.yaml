@@ -9,9 +9,6 @@
     runner_name: 'ansible-runner'
     runner_work_dir: '_work'
   tasks:
-    - name: Debug runner_token
-      debug:
-        var: runner_token
     - name: Update system packages
       apt:
         update_cache: yes
